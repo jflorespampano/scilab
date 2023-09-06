@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="https://www.w3schools.com/w3css/4/w3.css">
+</head>
+
+<body>
+    <div id="principal">
+
+        <div id="div_trabajo" class="w3-container">
+
+            <!--       -->
+            <div id="mi_div" class="w3-container w3-padding-24">
+                <pre style="width:700px;">
+        Este programa crea una red neuronal con TF para clasificar los datos que se muestran a la derecha. La columna
+        clase del punto contiene la clase a la que pertenece el punto y la columna prediccion es la clase que nuestra RED 
+        predice. Los puntos de entrada estan clasificados {1,-1} en el programa lo cambiamos a {1,0} por cuestiones de
+        procesamiento. De manera que en la predicción,
+        1 equivale a 1
+        0 equivale a -1
+                </pre>
+                <div class="w3-panel">
+                    <label for='miId'>Dame indice del punto a verificar segun la posicion en la tabla </label>
+                    <input type='number' id='indice' placeholder='ponga indice de tabla'><br>
+                    <input type="button" id="verifica_punto" class="boton" value="verifica punto" disabled="true"><br>
+                </div>
+                <p id="salida"></p>
+
+                <div style="overflow:scroll;height:400px;width:750px;">
+                    <table id="customers" class="w3-table w3-striped w3-centered">
+                        <caption>Datos</caption>
+                        <thead>
+                            <tr>
+                                <td>indice</td>
+                                <td>x</td>
+                                <td>y</td>
+                                <td>clase del punto</td>
+                                <td>prediccion</td>
+                            </tr>
+                        </thead>
+                        <tbody id="datos_tabla">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        <div id="div_imagen">
+            <!-- <canvas id="canvas" width="800" height="600"></canvas> -->
+        </div>
+    </div>
+</body>
+<!--script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@0.13.0"> </script-->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tensorflow/1.2.2/tf.js"> </script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-vis@1.0.2/dist/tfjs-vis.umd.min.js"></script>
+<script>
+    //red
+    class clsRedNeuronal {
+        constructor(DATOS) {
+            this.model = null;
+            this.DATOS_CLASSES = DATOS.DATOS_CLASSES;
+            this.DATOS_NUM_CLASSES = DATOS.DATOS_NUM_CLASSES;
+            this.DATOS_DATA = DATOS.DATOS_DATA;
+        }
+        modelo() {
+            return this.model;
+        }
+        //testSplit % de datos que se tomarán para prueba 1-testSplit para entrenamiento
+        convertToTensors(data, targets, testSplit) {
+            const numExamples = data.length;
+            if (numExamples !== targets.length) {
+                throw new Error('data y split tienen diferente numero de ejemplos');
+            }
+            const numTestExamples = Math.round(numExamples * testSplit);
+            const numTrainExamples = numExamples - numTestExamples;
+            const xDims = data[0].length;
+            //crea un tensor 2D tf.Tensor to hold to feature data
+            const xs = tf.tensor2d(data, [numExamples, xDims]);
+            //crea un tensor 1D to hold to labels and convert the number label
+            //from {0, 1, 2} a [1,0,0], [0,1,0], [0,0,1]
+            const ys = tf.oneHot(tf.tensor1d(targets).toInt(), this.DATOS_NUM_CLASSES);
+            //split the data into training and test set using slice
+            const xTrain = xs.slice([0, 0], [numTrainExamples, xDims]);
+            const xTest = xs.slice([numTrainExamples, 0], [numTestExamples, xDims]);
+            const yTrain = ys.slice([0, 0], [numTrainExamples, this.DATOS_NUM_CLASSES]);
+            const yTest = ys.slice([0, 0], [numTestExamples, this.DATOS_NUM_CLASSES]);
+            return [xTrain, yTrain, xTest, yTest];
+        }
+        getIrisData(testSplit) {
+            return tf.tidy(() => {
+                const dataByClass = [];
+                const targetsByClass = [];
+                for (let i = 0; i < this.DATOS_CLASSES.length; ++i) {
+                    dataByClass.push([]);
+                    targetsByClass.push([]);
+                }
+                for (const example of this.DATOS_DATA) {
+                    //obtenemos la etiqueta
+                    let tmp = example[example.length - 1];
+                    const target = (tmp == -1 ? 0 : tmp); //cambiar [-1,1] a [0,1]
+                    //obtenemos las x
+                    const data = example.slice(0, example.length - 1);
+                    //console.log("target="+target);
+                    dataByClass[target].push(data);
+                    targetsByClass[target].push(target);
+                }
+                //console.log(dataByClass);
+                //console.log(targetsByClass);
+                const xTrains = [];
+                const yTrains = [];
+                const xTests = [];
+                const yTests = [];
+                for (let i = 0; i < this.DATOS_CLASSES.length; ++i) {
+                    const [xTrain, yTrain, xTest, yTest] =
+                        this.convertToTensors(dataByClass[i], targetsByClass[i], testSplit);
+                    xTrains.push(xTrain);
+                    yTrains.push(yTrain);
+                    xTests.push(xTest);
+                    yTests.push(yTest);
+                }
+
+                const concatAxis = 0;
+                const test1 = xTrains;
+                const test2 = tf.concat(xTrains);
+                //console.log(test1);
+                //console.log(test2);
+
+                return [
+                    tf.concat(xTrains, concatAxis), tf.concat(yTrains, concatAxis),
+                    tf.concat(xTests, concatAxis), tf.concat(yTests, concatAxis)
+                ];
+
+            });
+        }
+        async trainModel(xTrain, yTrain, xTest, yTest) {
+            this.model = tf.sequential();
+            //tfvis.show.modelSummary({ name: 'Model Summary' }, this.model);
+            const learningRate = .01;
+            const numberOfEpochs = 90;
+            const optimizer = tf.train.adam(learningRate);
+            //sigmoide proporciona salida enre 0 y 1
+            this.model.add(tf.layers.dense(
+                { units: 10, activation: 'sigmoid', inputShape: [xTrain.shape[1]] }
+            ));
+            //capa de salida con 2 por que tenemos 2 clases
+            //softmax normaliza sus valores de entrada para que todos sumen 1
+            this.model.add(tf.layers.dense(
+                { units: 2, activation: 'softmax' }
+            ));
+            this.model.compile({
+                optimizer: optimizer,
+                loss: 'categoricalCrossentropy',
+                metrics: ['accuracy']
+            });
+            const history = await this.model.fit(xTrain, yTrain,
+                {
+                    epochs: numberOfEpochs, validationData: [xTest, yTest],
+                    callbacks: {
+                        onEpochEnd: async (epoch, logs) => {
+                            //console.log("Epoca: " + epoch + " logs:" + logs.loss);
+                            document.getElementById("salida").innerText = "Iteracines: Epoca: " + epoch + " F.Perdida:" + logs.loss
+                            await tf.nextFrame();
+                        },
+                    }
+                }
+            );
+            return this.model;
+        }
+        async doIris(muestra_predicciones) {
+            //0.2 dice 80% de datos para entrenamiento y 20% para pruebas
+            const [xTrain, yTrain, xTest, yTest] = this.getIrisData(0.2);
+            this.model = await this.trainModel(xTrain, yTrain, xTest, yTest);
+            document.getElementById("verifica_punto").disabled = false;
+            muestra_predicciones(this);
+            /*
+            //verifar estos 6 elementos que se sabe son de clase 1
+            const xs = tf.tensor2d([5.1,2,5.3,1.9,5.5,2.1,5,2,5.1,2.4,5.3,2.3],[6, 2]);
+            document.getElementById('output').innerText = model.predict(xs).argMax(-1).dataSync();
+            */
+
+        }
+    }//fin de clase clsRedNeuronal
+
+    //programa principal
+    let DATOS = {
+        DATOS_CLASSES: [1, -1],
+        DATOS_NUM_CLASSES: 2,
+        DATOS_DATA: [
+            [1, 6.8, 1], [0.8, 7.7, 1], [1.5, 9, 1], [1.8, 8, 1], [3, 7, 1],
+            [3.2, 8.8, 1], [4, 8.6, 1], [5, 7.8, 1], [5.1, 6.4, 1], [5.3, 5, 1],
+            [6, 8, 1], [6.1, 7.2, 1], [6.2, 6.3, 1], [6.3, 5.5, 1], [6.4, 4.3, 1],
+            [7, 7, 1], [7.2, 4.3, 1], [7.6, 5.3, 1], [8, 6, 1], [8.2, 5.4, 1],
+            [1, 3.5, -1], [1.2, 5.2, -1], [1.8, 5.9, -1], [1.9, 3.6, -1], [2.2, 2.2, -1],
+            [1.3, 4.3, -1], [2.8, 3.2, -1], [3.1, 5.6, -1], [3.3, 4.8, -1], [4, 2, -1],
+            [4.1, 3.2, -1], [5.2, 1, -1], [5.7, 2.1, -1], [6.5, 2, -1], [7, 1, -1],
+            [8, 2.2, -1], [8.2, 1, -1], [8.7, 2.5, -1], [8.8, 3.7, -1], [9, 4, -1]
+        ]
+    };
+    let PREDICCIONES = [];
+    function llena_tabla(puntos) {
+        let s = "";
+        let i = 0;
+        let clase = 0;
+        puntosxyc0 = [];
+        puntosxyc1 = [];
+        puntos.forEach(x => {
+            clase = x[2] == -1 ? 0 : x[2];
+            s += "<tr><td>" + i + "</td><td>" + x[0] + "</td><td>" + x[1] + "</td><td>" + clase + "</td><td class='prediccion'>?</td></tr>";
+            //
+
+            if (clase == 0) { puntosxyc0.push({ x: x[0], y: x[1] }) }
+            if (clase == 1) { puntosxyc1.push({ x: x[0], y: x[1] }) }
+            i++;
+        });
+        document.getElementById("datos_tabla").innerHTML = s;
+        //console.log(puntosxyc1);
+        return [puntosxyc0, puntosxyc1]
+    }
+    let muestra_predicciones = function (obj_modelo) {
+        let s = "";
+        let vector = [];
+        let renglon = [];
+        for (let i = 0; i < DATOS.DATOS_DATA.length; i++) {
+            s += "<tr>";
+            renglon = obj_modelo.DATOS_DATA[i];
+            vector = [];
+            vector.push(renglon[0]);
+            vector.push(renglon[1]);
+            s += "<td>" + i + "</td>"
+            s += "<td>" + renglon[0] + "</td>" + "<td>" + renglon[1] + "</td>" + "<td>" + renglon[2] + "</td>";
+            //const input = tf.tensor2d([4.8,1.8],[1,2]);
+            const input = tf.tensor2d(vector, [1, 2]);
+            //const prediction = obj_modelo.model.predict(input);
+            const predictionWithArgMax = obj_modelo.model.predict(input).argMax(-1).dataSync();
+            //console.log(predictionWithArgMax);
+            //document.getElementById("salida").innerText="Pertenece a la clase: "+predictionWithArgMax[0];
+            s += "<td>" + predictionWithArgMax[0] + "</td>"
+            s += "</tr>";
+
+        }
+
+        document.getElementById("datos_tabla").innerHTML = s;
+    }
+    window.onload = function () {
+        let obj_modelo = new clsRedNeuronal(DATOS);
+        document.getElementById("verifica_punto").addEventListener("click", function () {
+            let indice = document.getElementById("indice").value;
+            let renglon = obj_modelo.DATOS_DATA[indice];
+            let vector = [];
+            vector.push(renglon[0]);
+            vector.push(renglon[1]);
+            //const input = tf.tensor2d([4.8,1.8],[1,2]);
+            const input = tf.tensor2d(vector, [1, 2]);
+            //const prediction = obj_modelo.model.predict(input);
+            const predictionWithArgMax = obj_modelo.model.predict(input).argMax(-1).dataSync();
+            console.log(predictionWithArgMax);
+            document.getElementById("salida").innerText = "Pertenece a la clase: " + predictionWithArgMax[0];
+        });
+
+
+        //llena tabla con los datos x,y
+        const surface = document.getElementById('div_imagen');
+        const [serie1, serie2] = llena_tabla(obj_modelo.DATOS_DATA);
+        const series = ['clase 0', 'calse 1'];
+        const data = { values: [serie1, serie2], series }
+        //tfvis.render.scatterplot(surface, data);
+        tfvis.render.scatterplot({ name: "mis puntos" }, data);
+        //
+        // tfvis.render.scatterplot(
+        //     { name: 'funcion cuadratica' },
+        //     { values },
+        //     {
+        //         xLabel: 'x',
+        //         yLabel: 'y=x^2',
+        //         height: 300
+        //     }
+        // );
+        //
+
+        //graficas.grafica_puntos(obj_modelo.DATOS_DATA);
+        obj_modelo.doIris(muestra_predicciones);
+
+    }
+
+</script>
+
+</html>
