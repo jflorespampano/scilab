@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <style>
+        body{
+            display: block;
+        }
+        #div_imagen #div_trabajo{
+            display:inline-block;
+            border:1px solid grey;
+        }
+        #div_imagen>mi_imagen{
+            display:block;
+        }
+        #mi_div{
+            float:left;  
+            border:1px solid grey;
+            padding-left: 3px;
+        }
+        #titulo{
+            border:1px solid grey;
+            padding: 2px;
+        }
+
+        #canvas{
+            border:1px solid grey; 
+            float:left; 
+            margin: 10;
+            background: #D3D3D3;
+        }
+        input{
+            display: block; 
+        }
+        td{
+            text-align: right;
+        }
+        td.verde{
+            color: green;
+        }
+        td.azul{
+            color: blue;
+        }
+        .boton{
+            text-decoration: none;
+            padding: 5px;
+            font-weight: 600;
+            font-size: 15px;
+            color: #ffffff;
+            background-color: #1883ba;
+            border-radius: 6px;
+            border: 2px solid #0016b0;
+            
+        }
+        
+        .boton:disabled,
+        .boton[disabled]{
+            border: 1px solid #999999;
+            background-color: #cccccc;
+            color: #666666;
+        }
+        
+        #customers {
+            font-family: "Trebuchet MS", Arial, Helvetica, sans-serif;
+            border-collapse: collapse;
+            /*width: 100%;*/
+        }
+
+        #customers td, #customers th {
+            border: 1px solid #ddd;
+            padding: 8px;
+        }
+
+        #customers tr:nth-child(even){background-color: #f2f2f2;}
+
+        #customers tr:hover {background-color: #ddd;}
+
+        #customers th {
+            padding-top: 12px;
+            padding-bottom: 12px;
+            text-align: left;
+            background-color: #4CAF50;
+            color: white;
+        }
+    </style>
+    
+</head>
+<body>
+    <div id="principal">
+        <div id="div_imagen">
+            <canvas id="canvas" width="800" height="600"></canvas>
+        </div>
+        <div id="div_trabajo">
+            
+            <!--       -->
+            <div id="mi_div">
+                <label for='miId'>dame indice del punto a verificar</label>
+                <input type='number' id='indice' placeholder='ind'><br>
+                <p id="salida"></p>
+                <input type="button" id="verifica_punto" class="boton" value="verifica punto" disabled="true"><br>
+                <br>
+                    
+                <div style="overflow:scroll;height:400px;width:250px;">
+                     <table id="customers">
+                        <caption>Datos</caption>
+                        <thead>
+                            <tr>
+                                <td>ind</td><td>x</td><td>y</td>
+                                <td>clase</td><td>pred</td>
+                            </tr>
+                        </thead>
+                        <tbody id="datos_tabla">   
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+<!--script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@0.13.0"> </script-->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tensorflow/1.2.2/tf.js"> </script>
+<script>
+    //graficar puntos en el cudrante x+, y+
+    class clsGraficas{
+        //recibe en ctx el getContext("2d")
+        constructor(ctx){
+            this.ctx=ctx;
+            this.area_grafica={
+                "alto_canvas":0,
+                "ancho_canvas":0,
+                "maxx":0,
+                "maxy":0
+            }
+        }
+        //recibe {"x":0, "y":0, "clase":0}, radio del punto (5px)
+        //color2 es color relleno del punto, color1 es color de linea del punto
+        pon_punto(objeto, radio, color1, color2){
+            this.ctx.save();
+            this.ctx.strokeStyle=color1;
+            this.ctx.fillStyle=color2;
+            this.ctx.beginPath();
+            //obtener alto del canvas
+            let ancho_canvas=this.area_grafica.ancho_canvas-5;
+            let alto_canvas=this.area_grafica.alto_canvas-5;
+            let maxx=this.area_grafica.maxx;
+            let maxy=this.area_grafica.maxy;
+            //poner a escala
+            let py=objeto.y;
+            py=py*alto_canvas/maxy;
+            let px=objeto.x;
+            px=px*ancho_canvas/maxx;
+            //console.log("x="+px+" y="+py);
+            //invierte coordenadas
+            py=alto_canvas-py;
+            this.ctx.arc(px, py, radio, 0, 2*Math.PI);
+            if(color2) {this.ctx.fill()} else {ctx.stroke()};
+            this.ctx.stroke();
+            this.ctx.restore();
+        }
+        grafica_puntos(puntos){
+            let punto={};
+            let color="blue";
+            //obtener valores del canvas
+            this.area_grafica.alto_canvas=this.ctx.canvas.clientHeight-5;
+            this.area_grafica.ancho_canvas=this.ctx.canvas.clientWidth-5;
+            //obtener valores máximos x e y
+            let puntos_x = puntos.map(function(value,index) { return value[0]; });
+            let puntos_y = puntos.map(function(value,index) { return value[1]; });
+            //let col3 = puntos.map(function(value,index) { return value[2]; });
+            this.area_grafica.maxx = Math.max(...puntos_x);
+            this.area_grafica.maxy = Math.max(...puntos_y);
+            
+            puntos.forEach(elem=>{
+                punto={"x":0, "y":0, "clase":0};
+                punto.x=elem[0];
+                punto.y=elem[1];
+                punto.clase=elem[2];
+                color=(punto.clase==1)?"blue":"green";
+                this.pon_punto(punto, 5, "red", color)
+            });
+        }
+    }//fin de clase clsGraficas
+
+    //red
+    class clsRedNeuronal{
+        constructor(DATOS){
+            this.model=null;
+            this.DATOS_CLASSES = DATOS.DATOS_CLASSES;
+            this.DATOS_NUM_CLASSES = DATOS.DATOS_NUM_CLASSES;
+            this.DATOS_DATA=DATOS.DATOS_DATA;
+        }
+        modelo(){
+            return this.model;
+        }
+        //testSplit % de datos que se tomarán para prueba 1-testSplit para entrenamiento
+        convertToTensors(data, targets, testSplit){
+            const numExamples = data.length;
+            if(numExamples !== targets.length){
+                throw new Error('data y split tienen diferente numero de ejemplos');
+            }
+            const numTestExamples = Math.round(numExamples * testSplit);
+            const numTrainExamples = numExamples - numTestExamples;
+            const xDims = data[0].length;
+            //crea un tensor 2D tf.Tensor to hold to feature data
+            const xs= tf.tensor2d(data, [numExamples, xDims]);
+            //crea un tensor 1D to hold to labels and convert the number label
+            //from {0, 1, 2} a [1,0,0], [0,1,0], [0,0,1]
+            const ys= tf.oneHot(tf.tensor1d(targets).toInt(), this.DATOS_NUM_CLASSES);
+            //split the data into training and test set using slice
+            const xTrain = xs.slice([0, 0], [numTrainExamples, xDims]);
+            const xTest  = xs.slice([numTrainExamples, 0], [numTestExamples, xDims]);
+            const yTrain = ys.slice([0, 0], [numTrainExamples, this.DATOS_NUM_CLASSES]);
+            const yTest  = ys.slice([0,0], [numTestExamples, this.DATOS_NUM_CLASSES]);
+            return [xTrain, yTrain, xTest, yTest];
+        }
+        getIrisData(testSplit){
+            return tf.tidy(()=>{
+                const dataByClass=[];
+                const targetsByClass=[];
+                for(let i=0; i< this.DATOS_CLASSES.length; ++i){
+                    dataByClass.push([]);
+                    targetsByClass.push([]);
+                }
+                for(const example of this.DATOS_DATA){
+                    //obtenemos la etiqueta
+                    let tmp=example[example.length -1];
+                    const target = (tmp==-1?0:tmp); //cambiar [-1,1] a [0,1]
+                    //obtenemos las x
+                    const data = example.slice(0, example.length-1);
+                    //console.log("target="+target);
+                    dataByClass[target].push(data);
+                    targetsByClass[target].push(target);
+                }
+                //console.log(dataByClass);
+                //console.log(targetsByClass);
+                const xTrains = [];
+                const yTrains = [];
+                const xTests = [];
+                const yTests = [];
+                for(let i=0; i< this.DATOS_CLASSES.length; ++i){
+                    const [xTrain, yTrain, xTest, yTest]=
+                    this.convertToTensors(dataByClass[i], targetsByClass[i], testSplit);
+                    xTrains.push(xTrain);
+                    yTrains.push(yTrain);
+                    xTests.push(xTest);
+                    yTests.push(yTest);
+                }
+                        
+                const concatAxis = 0;
+                const test1 = xTrains;
+                const test2 = tf.concat(xTrains);
+                //console.log(test1);
+                //console.log(test2);
+                        
+                return[
+                    tf.concat(xTrains, concatAxis),tf.concat(yTrains, concatAxis),
+                    tf.concat(xTests, concatAxis), tf.concat(yTests, concatAxis)
+                ];
+                        
+            });
+        }
+        async trainModel(xTrain, yTrain, xTest, yTest){
+                this.model = tf.sequential();
+                const learningRate = .01;
+                const numberOfEpochs = 90;
+                const optimizer = tf.train.adam(learningRate);
+                //sigmoide proporciona salida enre 0 y 1
+                this.model.add(tf.layers.dense(
+                    {units: 10, activation: 'sigmoid', inputShape: [xTrain.shape[1]]}
+                ));
+                //capa de salida con 2 por que tenemos 2 clases
+                //softmax normaliza sus valores de entrada para que todos sumen 1
+                this.model.add(tf.layers.dense(
+                    { units:2, activation: 'softmax'}
+                ));
+                this.model.compile({
+                    optimizer:optimizer,
+                    loss: 'categoricalCrossentropy',
+                    metrics: ['accuracy']
+                });
+                const history = await this.model.fit(xTrain, yTrain,
+                    {
+                        epochs: numberOfEpochs, validationData :[xTest, yTest],
+                        callbacks:{
+                            onEpochEnd: async (epoch, logs)=>{
+                                console.log("Epoca: "+epoch+" logs:"+logs.loss);
+                                await tf.nextFrame();
+                            },
+                        }
+                    }
+                );
+                return this.model;
+        }
+        async doIris(muestra_predicciones){
+                //0.2 dice 80% de datos para entrenamiento y 20% para pruebas
+                const [xTrain, yTrain, xTest, yTest] = this.getIrisData(0.2);
+                this.model = await this.trainModel(xTrain, yTrain, xTest, yTest);
+                document.getElementById("verifica_punto").disabled = false;
+                muestra_predicciones(this);
+                /*
+                //verifar estos 6 elementos que se sabe son de clase 1
+                const xs = tf.tensor2d([5.1,2,5.3,1.9,5.5,2.1,5,2,5.1,2.4,5.3,2.3],[6, 2]);
+                document.getElementById('output').innerText = model.predict(xs).argMax(-1).dataSync();
+                */
+                
+        }
+    }//fin de clase clsRedNeuronal
+
+    //programa principal
+    let DATOS={
+        DATOS_CLASSES: [1,-1],
+        DATOS_NUM_CLASSES: 2,
+        DATOS_DATA: [
+            [1,6.8,1], [0.8,7.7,1], [1.5,9,1], [1.8,8,1], [3,7,1],
+            [3.2,8.8,1], [4,8.6,1], [5,7.8,1], [5.1,6.4,1], [5.3,5,1],
+            [6,8,1], [6.1,7.2,1], [6.2,6.3,1], [6.3,5.5,1], [6.4,4.3,1],
+            [7,7,1], [7.2,4.3,1], [7.6,5.3,1], [8,6,1], [8.2,5.4,1],
+            [1,3.5,-1], [1.2,5.2,-1], [1.8,5.9,-1], [1.9,3.6,-1], [2.2,2.2,-1],
+            [1.3,4.3,-1], [2.8,3.2,-1], [3.1,5.6,-1], [3.3,4.8,-1], [4,2,-1],
+            [4.1,3.2,-1], [5.2,1,-1], [5.7,2.1,-1], [6.5,2,-1], [7,1,-1],
+            [8,2.2,-1], [8.2,1,-1], [8.7,2.5,-1], [8.8,3.7,-1], [9,4,-1]
+        ]
+    };
+    let PREDICCIONES=[];
+    function llena_tabla(puntos){
+        let s="";
+        let i=0;
+        let clase=0;
+        puntos.forEach(x=>{
+            clase=x[2]==-1?0:x[2];
+            s+="<tr><td>"+i+"</td><td>"+x[0]+"</td><td>"+x[1]+"</td><td>"+clase+"</td><td class='prediccion'>?</td></tr>";
+            i++;
+        });
+        document.getElementById("datos_tabla").innerHTML=s;
+        
+    }
+    let muestra_predicciones = function(obj_modelo){
+        let s="";
+        let vector=[];
+        let renglon=[];
+        for(let i=0; i<DATOS.DATOS_DATA.length;i++){
+            s+="<tr>";
+            renglon=obj_modelo.DATOS_DATA[i];
+            vector=[];
+            vector.push(renglon[0]);
+            vector.push(renglon[1]);
+            s+="<td>"+i+"</td>"
+            s+="<td>"+renglon[0]+"</td>"+"<td>"+renglon[1]+"</td>"+"<td>"+renglon[2]+"</td>";
+            //const input = tf.tensor2d([4.8,1.8],[1,2]);
+            const input = tf.tensor2d(vector,[1,2]);
+            //const prediction = obj_modelo.model.predict(input);
+            const predictionWithArgMax = obj_modelo.model.predict(input).argMax(-1).dataSync();
+            //console.log(predictionWithArgMax);
+            //document.getElementById("salida").innerText="Pertenece a la clase: "+predictionWithArgMax[0];
+            s+="<td>"+predictionWithArgMax[0]+"</td>"
+            s+="</tr>";
+            
+        }
+        
+        document.getElementById("datos_tabla").innerHTML=s;
+    }
+    window.onload=function(){
+        let obj_modelo=new clsRedNeuronal(DATOS);
+        document.getElementById("verifica_punto").addEventListener("click", function(){
+            let indice=document.getElementById("indice").value;
+            let renglon=obj_modelo.DATOS_DATA[indice];
+            let vector=[];
+            vector.push(renglon[0]);
+            vector.push(renglon[1]);
+            //const input = tf.tensor2d([4.8,1.8],[1,2]);
+            const input = tf.tensor2d(vector,[1,2]);
+            //const prediction = obj_modelo.model.predict(input);
+            const predictionWithArgMax = obj_modelo.model.predict(input).argMax(-1).dataSync();
+            console.log(predictionWithArgMax);
+            document.getElementById("salida").innerText="Pertenece a la clase: "+predictionWithArgMax[0];
+        });
+        
+        var c1=document.getElementById("canvas");
+        var ctx=c1.getContext("2d");
+        let graficas=new clsGraficas(ctx);
+        //llena tabla con los datos x,y
+        llena_tabla(obj_modelo.DATOS_DATA);
+        graficas.grafica_puntos(obj_modelo.DATOS_DATA);
+        obj_modelo.doIris(muestra_predicciones);
+        
+    }
+
+</script>
+</html>

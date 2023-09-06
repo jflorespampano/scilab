@@ -1,0 +1,181 @@
+<html>
+    <!--ref 1: https://js.tensorflow.org/tutorials/core-concepts.html-->
+  <head>
+    <style>
+       #canvas{
+            border:1px solid grey; 
+            float:left; 
+            margin: 10;
+            background: #D3D3D3;
+        }
+    </style>
+    <!-- Load TensorFlow.js -->
+    <!-- script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@0.13.0"> </script -->
+	<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+    
+  </head>
+
+  <body>
+    <p>Programa que predice putos dada una coordenada <strong>X</strong> con una regresión lineal, 
+      los puntos azules son los datos de entrenamiento, los verdes las predicciones<br>
+      En el input Text debe dar un número < 10 y al dar clic en el botón, 
+      el programa predice el valor <strong>Y</strong>.<br>
+      <strong>El programa se hizo usando Tensor Flow.</strong>
+    </p>
+    <div id="div_imagen">
+      <canvas id="canvas" width="800" height="600"></canvas>
+    </div>
+    <br>
+    <labe>dato X a predecir:</labe>
+    <input type="text" id="txt_x"value="5">
+    <input type="button" value="predecir" onclick="predecir()">
+  </body>
+  <script>
+    /**
+     *clase para graficar un conjunot de puntos (x,y)
+     */
+    class clsGraficas{
+      //recibe en ctx el getContext("2d")
+      constructor(ctx){
+          this.ctx=ctx;
+          this.area_grafica={
+              "alto_canvas":0,
+              "ancho_canvas":0,
+              "maxx":0,
+              "maxy":0
+          }
+      }
+      //recibe {"x":0, "y":0, "clase":0}, radio del punto (5px)
+      //color2 es color relleno del punto, color1 es color de linea del punto
+      /**
+       * pone un punto en la ventana grafica.
+       * @param {object} objeto - {"x":0, "y":0, "clase":0}.
+       * @param {int} radio - radio del punto en la grafica.
+       * @param {string} color1 - color del punto.
+       * @param {string} color2 - color del relleno del punto.
+       */
+      pon_punto(objeto, radio, color1, color2){
+          this.ctx.save();
+          this.ctx.strokeStyle=color1;
+          this.ctx.fillStyle=color2;
+          this.ctx.beginPath();
+          //obtener alto del canvas
+          let ancho_canvas=this.area_grafica.ancho_canvas-5;
+          let alto_canvas=this.area_grafica.alto_canvas-5;
+          let maxx=this.area_grafica.maxx;
+          let maxy=this.area_grafica.maxy;
+          //poner a escala
+          let py=objeto.y;
+          py=py*alto_canvas/maxy;
+          let px=objeto.x;
+          px=px*ancho_canvas/maxx;
+          //console.log("x="+px+" y="+py);
+          //invierte coordenadas
+          py=alto_canvas-py;
+          this.ctx.arc(px, py, radio, 0, 2*Math.PI);
+          if(color2) {this.ctx.fill()} else {ctx.stroke()};
+          this.ctx.stroke();
+          this.ctx.restore();
+      }
+      /**
+       * @param {array} puntos - arreglo de puntos a graficar cada punto tiene [x,y,clase]
+       */
+      grafica_puntos(puntos){
+          let punto={};
+          let color="blue";
+          //obtener valores del canvas
+          this.area_grafica.alto_canvas=this.ctx.canvas.clientHeight-5;
+          this.area_grafica.ancho_canvas=this.ctx.canvas.clientWidth-5;
+          //obtener valores máximos x e y
+          let puntos_x = puntos.map(function(value,index) { return value[0]; });
+          let puntos_y = puntos.map(function(value,index) { return value[1]; });
+          //let col3 = puntos.map(function(value,index) { return value[2]; });
+          //this.area_grafica.maxx = Math.max(...puntos_x);
+          this.area_grafica.maxx =10;
+          //this.area_grafica.maxy = Math.max(...puntos_y);
+          this.area_grafica.maxy =10;
+          
+          puntos.forEach(elem=>{
+              punto={"x":0, "y":0};
+              punto.x=elem[0];
+              punto.y=elem[1];
+              color="blue";
+              this.pon_punto(punto, 5, "red", color)
+          });
+      }
+  }//fin de clase clsGraficas
+  </script>
+  <!-- código de la prediccion para regresion lineal, con la biblioteca TF-->
+  <script>
+    //datos de trabajo, el formato de los datos es [x,y], es decir dato, etiqueta
+    let misDatos=[
+          [1,1],[2,3],[3,5],[4,7]
+        ];
+    //elementos para graficar
+    //obtenemos el canvas donde se garficará
+    var c1=document.getElementById("canvas");
+    var ctx=c1.getContext("2d");
+    let graficas=new clsGraficas(ctx);
+	//graficamos puntos actuales en azul
+	graficas.grafica_puntos(misDatos);
+
+    //hacer la prediccion
+    function predecir(){
+      //graficas.grafica_puntos(misDatos);
+
+      // Define un modelo para  regresion lineal
+      const model = tf.sequential();
+      model.add(tf.layers.dense({units: 1, inputShape: [1]}));
+
+      // Prepara el  model fpara entrenamiento especificando la perdida y el optimizador.
+      model.compile({loss: 'meanSquaredError', optimizer: 'sgd'});
+
+      //obtenemos los valores x y de los datos
+      var columnx = [];
+      var columny = [];
+      for(var i=0; i<misDatos.length; i++){
+          columnx.push(misDatos[i][0]);
+          columny.push(misDatos[i][1]);
+      }
+      //Genera algunos datos para el entrenamiento. lo puntos (1,1),(2,3),(3,5),(4,7)
+      //const xs = tf.tensor2d([1, 2, 3, 4], [4, 1]);
+      //const ys = tf.tensor2d([1, 3, 5, 7], [4, 1]);
+      //creamos los tensores para datos y etiquetas
+      const xs = tf.tensor2d(columnx, [4, 1]);
+      const ys = tf.tensor2d(columny, [4, 1]);
+
+      //Entrenamos el modelo con esos datos y 100 iteraciones
+      //puede usar model.fit  si su conjunto de datos no es muy grande, debe enviar como parametros los
+      //datos (las xs), las etiquetas (los ys), las iteraciones (epochs), model.fit devuelve una promesa
+      model.fit(xs, ys, {epochs: 100}).then(() => {
+        //model.predict(tf.tensor2d([5], [1, 1])).print();
+        //obtenemos el dato x obtenido del input text
+        let strX=document.getElementById("txt_x").value;
+        let x=parseFloat(strX);
+        //creamos un vecor de 1x1 para meter el dato x
+        let vector=[];
+        vector.push(x);
+        //const prediction = model.predict(tf.tensor2d([5], [1, 1]));
+        // Usamos el modelo para inferir la etiqueta de X 
+        const prediction = model.predict(tf.tensor2d(vector, [1, 1]));
+        //obtenemos un arreglo de datos a partir del tensor de respuesta 
+        //con la funcion data que devuelve una promesa con el arreglo obtenido
+        //en data
+        prediction.data().then(data => {
+          console.log("y:");
+          //como el tensor trae un solo dato, tiene la forma tensor2d([ys], [1, 1]), 
+          //generú un arreglo de 1x1, el primer dato del arreglo tiene el dato ys
+          console.log(data[0]);
+          //graficamos el punto
+          let punto={"x":0, "y":0, "clase":0};
+          punto.x=x;
+          punto.y=data[0];
+          let color="green";
+          graficas.pon_punto(punto, 5, "red", color)
+          //graficas.pon_punt
+        });
+      });
+    }
+    
+  </script>
+</html>

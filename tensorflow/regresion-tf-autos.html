@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title>regresion lieneal con tf </title>
+
+  <!-- Import TensorFlow.js -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.0.0/dist/tf.min.js"></script>
+  <!-- Import tfjs-vis -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-vis@1.0.2/dist/tfjs-vis.umd.min.js"></script>
+
+  <!-- script src="script.js"></script -->
+
+</head>
+
+<body>
+  <pre>
+    Ejemplo: regresión lineal sobre un conjunto de datos, este programa:
+    Toma un conjunto de datos desde: https://storage.googleapis.com/tfjs-tutorials/carsData.json
+    [
+      {
+        "Name": "chevrolet chevelle malibu",
+        "Miles_per_Gallon": 18,
+        "Cylinders": 8,
+        "Displacement": 307,
+        "Horsepower": 130,
+        "Weight_in_lbs": 3504,
+        "Acceleration": 12,
+        "Year": "1970-01-01",
+        "Origin": "USA"
+      }, 
+      ...]
+
+    Y los filtra para obtener solo: Miles_per_Gallon y Horsepower. Despues los grafica a la derecha de su pantalla como:
+    mpg * horsepower.
+    A continuaciín calcula una regresión lineal, para predicción de datos.
+ 
+
+    Al cargar este archivo, puede ver en tiempo real la grafica del descenso del error de estimación 
+    y si se desplaza hacia abajo de la página, al terminar el procesamiento verá la línea estimada por el 
+    programa.
+  </pre>
+  <p id="mensaje" style="color: brown;"></p>
+</body>
+<script>
+
+  async function getData() {
+    const carsDataReq = await fetch('https://storage.googleapis.com/tfjs-tutorials/carsData.json');
+    const carsData = await carsDataReq.json();
+    const cleaned = carsData.map(car => ({
+      mpg: car.Miles_per_Gallon,
+      horsepower: car.Horsepower,
+    }))
+      .filter(car => (car.mpg != null && car.horsepower != null));
+    //mostrando los datos leidos desde la nube
+    //document.write (JSON.stringify(cleaned));
+    return cleaned;
+  }
+
+  /***
+   * Cramos un modelo de red neuronal
+   */
+  function createModel() {
+    // Cramos un modelo sequencial
+    const model = tf.sequential();
+    // Agregamos una capa oculta simple
+    model.add(tf.layers.dense({ inputShape: [1], units: 1, useBias: true }));
+    // Agregamos una capa de salida
+    model.add(tf.layers.dense({ units: 1, useBias: true }));
+    return model;
+  }
+
+  //preparar los datos
+  /**
+   * Convierte los datos de entrada a tensors que puede usarse para entrenamiento de maquina 
+   * Observe el suo de _shuffling_ (barajar) los datos y espues
+   * _normalizing_ (normalizarlos)
+   * 
+   * @param {json} data - arreglo json de datos
+   * @returns {object} tensor
+   */
+  function convertToTensor(data) {
+    // envolviendo estos calculos en el metodo tidy se eliminaran 
+    // los tensores intermedios.
+
+    return tf.tidy(() => {
+      // Step 1. aleatorizar los datos    
+      tf.util.shuffle(data);
+
+      // Step 2. Convertir data a Tensor
+      const inputs = data.map(d => d.horsepower)
+      const labels = data.map(d => d.mpg);
+
+      const inputTensor = tf.tensor2d(inputs, [inputs.length, 1]);
+      const labelTensor = tf.tensor2d(labels, [labels.length, 1]);
+
+      //Step 3. Normalizar los data al el rango 0 - 1 usando escala min-max
+      const inputMax = inputTensor.max();
+      const inputMin = inputTensor.min();
+      const labelMax = labelTensor.max();
+      const labelMin = labelTensor.min();
+
+      const normalizedInputs = inputTensor.sub(inputMin).div(inputMax.sub(inputMin));
+      const normalizedLabels = labelTensor.sub(labelMin).div(labelMax.sub(labelMin));
+
+      return {
+        inputs: normalizedInputs,
+        labels: normalizedLabels,
+        // devuelve los limites min/max que usaremos despues
+        inputMax,
+        inputMin,
+        labelMax,
+        labelMin,
+      }
+    });
+  }
+
+  /***
+   * prepara el modelo para el entrenamiento
+   * @param {object} model - modelo para el entrenamiento
+   * @param [object] inpus - datos de entrada
+   * @param {object} labels - etiquetas de los datos de entrenamiento
+   * @return {object} modelo entrenado
+   */
+  async function trainModel(model, inputs, labels) {
+    // Prepara el modelo para entrenamiento  
+    model.compile({
+      optimizer: tf.train.adam(),
+      loss: tf.losses.meanSquaredError,
+      metrics: ['mse'],
+    });
+
+    const batchSize = 32;
+    const epochs = 50;
+
+    return await model.fit(inputs, labels, {
+      batchSize,
+      epochs,
+      shuffle: true,
+      callbacks: tfvis.show.fitCallbacks(
+        { name: 'Training Performance' },
+        ['loss', 'mse'],
+        { height: 200, callbacks: ['onEpochEnd'] }
+      )
+    });
+  }
+
+  /***
+   * prueba el modelo
+   * @model {object} model - modelo
+   * @inputData {object} -datos de entrada
+   * @normalizationData {object} datos normalizados
+   */
+  function testModel(model, inputData, normalizationData) {
+    const { inputMax, inputMin, labelMin, labelMax } = normalizationData;
+
+    // Genera predicciones para rango uniforme de numeros numbers entre 0 1;
+    // Desnormalizamos los datos haciendo lo inverso del escalamiento mínimo-máximo. 
+    // que hicimos antes.
+    const [xs, preds] = tf.tidy(() => {
+
+      const xs = tf.linspace(0, 1, 100);
+      const preds = model.predict(xs.reshape([100, 1]));
+
+      const unNormXs = xs
+        .mul(inputMax.sub(inputMin))
+        .add(inputMin);
+
+      const unNormPreds = preds
+        .mul(labelMax.sub(labelMin))
+        .add(labelMin);
+
+      // desnormalizamos los datos
+      return [unNormXs.dataSync(), unNormPreds.dataSync()];
+    });
+
+
+    const predictedPoints = Array.from(xs).map((val, i) => {
+      return { x: val, y: preds[i] }
+    });
+
+    const originalPoints = inputData.map(d => ({
+      x: d.horsepower, y: d.mpg,
+    }));
+
+
+    tfvis.render.scatterplot(
+      { name: 'Model Predictions vs Original Data' },
+      { values: [originalPoints, predictedPoints], series: ['original', 'predicted'] },
+      {
+        xLabel: 'Horsepower',
+        yLabel: 'MPG',
+        height: 300
+      }
+    );
+  }
+
+
+  //document.addEventListener('DOMContentLoaded', getData)
+  async function run() {
+    // carga y graficalos datso de entrada originales sobre lso que vamos a entrenar
+    const data = await getData();
+    const values = data.map(d => ({
+      x: d.horsepower,
+      y: d.mpg,
+    }));
+    //document.write (JSON.stringify(values));
+
+    tfvis.render.scatterplot(
+      { name: 'caballos de fuerza vs Millas Por Galon' },
+      { values },
+      {
+        xLabel: 'Caballos de Fuerza',
+        yLabel: 'Millas Por Galon',
+        height: 300
+      }
+    );
+
+    // 
+    // Creando el modelo
+    const model = createModel();
+    tfvis.show.modelSummary({ name: 'Model Summary' }, model);
+    //
+    // Convirtiendo los datos a una forma que puede usarse para entrenamiento
+    const tensorData = convertToTensor(data);
+    const { inputs, labels } = tensorData;
+
+    // entrenando el modelo  
+    await trainModel(model, inputs, labels);
+    let p = document.querySelector("#mensaje");
+    p.innerHTML = "Final del entrenamiento";
+    console.log('final del entrenamiento');
+    //
+    // Haciendo algunas predicciones usando el model y comparando 
+    // con los datos originales
+    testModel(model, data, tensorData);
+
+  }
+
+  document.addEventListener('DOMContentLoaded', run);
+
+</script>
+
+</html>

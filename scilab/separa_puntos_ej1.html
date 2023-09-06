@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <style>
+        #canvas{
+            border:1px solid grey; 
+            float:left; 
+            margin: 10;
+        }
+    </style>
+    
+</head>
+<body>
+    <p>Para este conjunto de puntos (azules y verdes), trace la mejor recta que separe
+        los puntos azules de los verdes. Recuerde que la formula de la recta es y=w0+w1*x ,
+        seleccione los valores adecuados de w0 y w1. Inicie con valores al azar, por ejemplo
+        w0=4, w1=1.5, a partir de ahi ajuste la recta modificando w0 y w1.
+    </p>
+    <canvas id="canvas" width="800" height="600"></canvas>
+    <label for='miId'>para: x=w0+w1*x, dame w0</label>
+    <input type='number' id='w0' placeholder='w0'><br>
+    <label for='miId'>para: x=w0+w1*x, dame w1</label>
+    <input type='number' id='w1' placeholder='w1'><br>
+    <input type="button" id="traza_recta" value="grafica" >
+    <p id="puntos"></p>
+</body>
+<script>
+    let area_grafica={
+        "alto_canvas":0,
+        "ancho_canvas":0,
+        "maxx":0,
+        "maxy":0
+    };
+    //w0=1, w1=0.9
+    var puntos=[
+       {'x':60, 'y':60, 'clase':1},
+       {'x':70, 'y':70, 'clase':1},
+       {'x':90, 'y':96, 'clase':1},
+       {'x':40, 'y':30, 'clase':-1},
+       {'x':76, 'y':50, 'clase':-1},
+       {'x':88, 'y':70, 'clase':-1}
+   ];
+   function linea(ctx,w0,w1){
+        ctx.save();
+        ctx.beginPath()
+        let radio=1;
+        let ancho_canvas=area_grafica.ancho_canvas;
+        let alto_canvas=area_grafica.alto_canvas;
+        let maxx=area_grafica.maxx;
+        let maxy=area_grafica.maxy;
+        
+        //calcula punto uno segun formula de linea
+        let x=0; //que corresponde al punto 0 de la ventana
+        let px=0;
+        let y=w0+w1*x;
+        //ajusta escala
+        let py=y*alto_canvas/maxy;
+        //invierte coordenadas
+        py=alto_canvas-py;
+        //ir al punto 1 sin graficar
+        ctx.moveTo(px, py);
+        //toma el ultimo punto x del canvas
+        x=maxx; //que corresponde al punto ancho_canvas de la ventana
+        px=ancho_canvas;
+        //calcula punto 2 segun formula de linea
+        y=w0+w1*x;
+        //ajusta escala
+        py=y*alto_canvas/maxy;
+        //invierte coordenadas
+        py=alto_canvas-py;
+        ctx.lineTo(px, py);
+        ctx.stroke();
+        
+        ctx.restore();
+    }
+    function pon_punto(ctx, objeto, radio, color1, color2){
+        ctx.save();
+        ctx.strokeStyle=color1;
+        ctx.fillStyle=color2;
+        ctx.beginPath();
+        //obtener alto del canvas
+        let ancho_canvas=area_grafica.ancho_canvas-5;
+        let alto_canvas=area_grafica.alto_canvas-5;
+        let maxx=area_grafica.maxx;
+        let maxy=area_grafica.maxy;
+        //poner a escala
+        let py=objeto.y;
+        py=py*alto_canvas/maxy;
+        let px=objeto.x;
+        px=px*ancho_canvas/maxx;
+        //console.log("x="+px+" y="+py);
+        //invierte coordenadas
+        py=alto_canvas-py;
+        ctx.arc(px, py, radio, 0, 2*Math.PI);
+        if(color2) {ctx.fill()} else {ctx.stroke()};
+        ctx.stroke();
+        ctx.restore();
+    }
+    
+    function etc(){
+        //pone puntos
+        ctx.moveTo(300, 300);
+        ctx.arc(300, 300, 5, 0, Math.PI*2, false);
+        ctx.moveTo(100, 300);
+        ctx.arc(100, 300, 5, 0, Math.PI*2, false)
+        //primera linea
+        ctx.moveTo(300, 300);
+        ctx.lineTo(100, 300);
+        ctx.stroke();
+        //
+    }
+    
+
+    window.onload=function(){
+        c1=document.getElementById("canvas");
+        ctx=c1.getContext("2d");
+        document.getElementById("traza_recta").addEventListener("click",function(){
+            let valor0=document.getElementById("w0").value;
+            let valor1=document.getElementById("w1").value;
+            //
+            let w0=Number(isNaN(valor0)?0:valor0);
+            let w1=Number(isNaN(valor1)?0:valor1);
+            console.log("w0="+w0+" w1="+w1);
+            //linea(ctx,2,0.1);
+            linea(ctx,w0,w1);
+        });
+        //console.log(c1.clientWidth);
+        //console.log(ctx.canvas.clientHeight);
+        //obtener valores del canvas
+        area_grafica.alto_canvas=ctx.canvas.clientHeight-5;
+        area_grafica.ancho_canvas=ctx.canvas.clientWidth-5;
+        //obtener valores máximos x e y
+        let puntos_x=puntos.map(item=>item.x);
+        let puntos_y=puntos.map(item=>item.y);
+        area_grafica.maxx = Math.max(...puntos_x);
+        area_grafica.maxy = Math.max(...puntos_y);
+        //graficar puntos
+        puntos.forEach(elem=>{
+            color=(elem.clase==1)?"blue":"green";
+            pon_punto(ctx, elem, 5, "red", color)
+        });
+
+        //mostrar datos de los puntos x,y
+        let spuntos="El área grafica esta entre las coordenadas<br>";
+        spuntos+="x=(0,"+area_grafica.maxx+")";
+        spuntos+="y=(0,"+area_grafica.maxy+")<br><br>"
+        spuntos+="PUNTOS:<br>";
+        puntos.forEach(e=>{
+            spuntos+=JSON.stringify(e)+"<br>";
+        });
+        document.getElementById("puntos").innerHTML=spuntos;
+        //
+    }
+</script>
+</html>
